@@ -32,7 +32,6 @@ import de.unipassau.isl.evs.ssh.core.container.Container;
 import de.unipassau.isl.evs.ssh.core.container.StartupException;
 import de.unipassau.isl.evs.ssh.core.sec.Permission;
 import de.unipassau.isl.evs.ssh.master.database.generated.DefaultSchema;
-import de.unipassau.isl.evs.ssh.master.database.generated.Tables;
 import de.unipassau.isl.evs.ssh.master.database.generated.tables.records.ComposedOfPermissionRecord;
 import de.unipassau.isl.evs.ssh.master.database.generated.tables.records.PermissionRecord;
 import org.jooq.DSLContext;
@@ -41,7 +40,6 @@ import org.jooq.InsertValuesStep2;
 import org.jooq.SQLDialect;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
-import org.jooq.util.sqlite.SQLiteDatabase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -225,10 +223,10 @@ public class DatabaseConnector extends AbstractComponent {
         create.batch(fillGuestTemplate).execute();
     }
 
-    private void dropAllTables(){
+    private void dropAllTables() {
         LinkedList<DropTableStep> dropTables = new LinkedList<>();
         for (Table<?> table : DefaultSchema.DEFAULT_SCHEMA.getTables()) {
-             dropTables.add(create.dropTable(table));
+            dropTables.add(create.dropTable(table));
         }
         create.batch(dropTables).execute();
     }

@@ -63,6 +63,6 @@ CREATE TABLE HolidayLog (
   _ID                INTEGER NOT NULL PRIMARY KEY,
   electronicModuleId INTEGER,
   action             VARCHAR NOT NULL,
-  timestamp          INTEGER NOT NULL,
+  timestamp          BIGINT NOT NULL,
   FOREIGN KEY (electronicModuleId) REFERENCES ElectronicModule (_ID) ON DELETE CASCADE
 );

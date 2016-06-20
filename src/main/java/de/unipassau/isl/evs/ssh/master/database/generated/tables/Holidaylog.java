@@ -35,7 +35,7 @@ import org.jooq.impl.TableImpl;
 @SuppressWarnings({ "all", "unchecked", "rawtypes" })
 public class Holidaylog extends TableImpl<HolidaylogRecord> {
 
-    private static final long serialVersionUID = -358556573;
+    private static final long serialVersionUID = 1250621312;
 
     /**
      * The reference instance of <code>HolidayLog</code>
@@ -68,7 +68,7 @@ public class Holidaylog extends TableImpl<HolidaylogRecord> {
     /**
      * The column <code>HolidayLog.timestamp</code>.
      */
-    public final TableField<HolidaylogRecord, Integer> TIMESTAMP = createField("timestamp", org.jooq.impl.SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<HolidaylogRecord, Long> TIMESTAMP = createField("timestamp", org.jooq.impl.SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
      * Create a <code>HolidayLog</code> table reference
