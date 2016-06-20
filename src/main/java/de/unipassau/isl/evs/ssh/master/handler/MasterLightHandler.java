@@ -1,0 +1,208 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2016.
+ * Bucher Andreas, Fink Simon Dominik, Fraedrich Christoph, Popp Wolfgang,
+ * Sell Leon, Werli Philemon
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+package de.unipassau.isl.evs.ssh.master.handler;
+
+
+import de.unipassau.isl.evs.ssh.core.CoreConstants;
+import de.unipassau.isl.evs.ssh.core.database.UnknownReferenceException;
+import de.unipassau.isl.evs.ssh.core.database.dto.Module;
+import de.unipassau.isl.evs.ssh.core.messaging.Message;
+import de.unipassau.isl.evs.ssh.core.messaging.RoutingKey;
+import de.unipassau.isl.evs.ssh.core.messaging.payload.ClimatePayload;
+import de.unipassau.isl.evs.ssh.core.messaging.payload.ErrorPayload;
+import de.unipassau.isl.evs.ssh.core.messaging.payload.LightPayload;
+import de.unipassau.isl.evs.ssh.core.sec.Permission;
+import de.unipassau.isl.evs.ssh.master.database.HolidayController;
+import de.unipassau.isl.evs.ssh.master.database.SlaveController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.Map;
+
+import static de.unipassau.isl.evs.ssh.core.CoreConstants.LogActions.LIGHT_OFF_ACTION;
+import static de.unipassau.isl.evs.ssh.core.CoreConstants.LogActions.LIGHT_ON_ACTION;
+import static de.unipassau.isl.evs.ssh.core.messaging.Message.HEADER_REFERENCES_ID;
+import static de.unipassau.isl.evs.ssh.core.messaging.RoutingKeys.*;
+import static de.unipassau.isl.evs.ssh.core.sec.Permission.REQUEST_LIGHT_STATUS;
+import static de.unipassau.isl.evs.ssh.core.sec.Permission.SWITCH_LIGHT;
+import static de.unipassau.isl.evs.ssh.core.sec.Permission.UNLATCH_DOOR;
+
+/**
+ * Handles light messages, logs them for the holiday simulation and generates messages
+ * for each target and passes them to the OutgoingRouter.
+ *
+ * @author Leon Sell
+ */
+public class MasterLightHandler extends AbstractMasterHandler {
+    private static final int BRIGHTNESS_LOWER_THRESHOLD = 20;
+    private final Logger logger = LoggerFactory.getLogger(getClass());
+
+    @Override
+    public void handle(Message.AddressedMessage message) {
+        if (MASTER_LIGHT_SET.matches(message)) {
+            handleSetRequest(message);
+        } else if (MASTER_LIGHT_GET.matches(message)) {
+            handleGetRequest(message);
+        } else if (SLAVE_LIGHT_GET_REPLY.matches(message)) {
+            handleGetResponse(message);
+        } else if (SLAVE_LIGHT_SET_REPLY.matches(message)) {
+            handleSetResponse(message);
+        } else if (SLAVE_LIGHT_GET_ERROR.matches(message)) {
+            handleGetError(message, SLAVE_LIGHT_GET_ERROR.getPayload(message));
+        } else if (SLAVE_LIGHT_SET_ERROR.matches(message)) {
+            handleSetError(message, SLAVE_LIGHT_SET_ERROR.getPayload(message));
+        } else if (MASTER_DOOR_UNLATCH.matches(message)) {
+            handleDoorUnlatched(message);
+        } else {
+            invalidMessage(message);
+        }
+    }
+
+    @Override
+    public RoutingKey[] getRoutingKeys() {
+        return new RoutingKey[]{MASTER_LIGHT_SET,
+                MASTER_LIGHT_GET,
+                SLAVE_LIGHT_SET_REPLY,
+                SLAVE_LIGHT_GET_REPLY,
+                SLAVE_LIGHT_GET_ERROR,
+                SLAVE_LIGHT_SET_ERROR,
+                MASTER_DOOR_UNLATCH};
+    }
+
+    private void handleSetError(Message.AddressedMessage message, ErrorPayload payload) {
+        final Message.AddressedMessage correspondingMessage =
+                takeProxiedReceivedMessage(message.getHeader(HEADER_REFERENCES_ID));
+        sendReply(correspondingMessage, new Message(payload));
+    }
+
+    private void handleGetError(Message.AddressedMessage message, ErrorPayload payload) {
+        final Message.AddressedMessage correspondingMessage =
+                takeProxiedReceivedMessage(message.getHeader(HEADER_REFERENCES_ID));
+        sendReply(correspondingMessage, new Message(payload));
+    }
+
+    private void handleSetRequest(Message.AddressedMessage message) {
+        final LightPayload payload = MASTER_LIGHT_SET.getPayload(message);
+        final Module atModule = payload.getModule();
+
+        if (!hasPermission(message.getFromID(), SWITCH_LIGHT, atModule.getName())
+                || (!hasPermission(message.getFromID(), Permission.SWITCH_LIGHT_EXTERN) &&
+                !requireComponent(MasterUserLocationHandler.KEY).isDeviceLocal(message.getFromID()))
+                ) {
+            sendNoPermissionReply(message, SWITCH_LIGHT);
+            return;
+        }
+
+        final Message messageToSend = new Message(payload);
+        final Message.AddressedMessage sentMessage = sendMessage(atModule.getAtSlave(), SLAVE_LIGHT_SET, messageToSend);
+        recordReceivedMessageProxy(message, sentMessage);
+        try {
+            if (payload.getOn()) {
+                requireComponent(HolidayController.KEY).addHolidayLogEntryNow(LIGHT_ON_ACTION, atModule.getName());
+            } else {
+                requireComponent(HolidayController.KEY).addHolidayLogEntryNow(LIGHT_OFF_ACTION, atModule.getName());
+            }
+        } catch (UnknownReferenceException ure) {
+            logger.info("Can't created holiday log entry because the given module doesn't exist in the database.");
+        }
+    }
+
+    private void handleGetRequest(Message.AddressedMessage message) {
+        final LightPayload payload = MASTER_LIGHT_GET.getPayload(message);
+        final Module atModule = payload.getModule();
+        if (hasPermission(message.getFromID(), REQUEST_LIGHT_STATUS)) {
+            final Message messageToSend = new Message(payload);
+            final Message.AddressedMessage sendMessage =
+                    sendMessage(atModule.getAtSlave(), SLAVE_LIGHT_GET, messageToSend);
+            recordReceivedMessageProxy(message, sendMessage);
+        } else {
+            //no permission
+            sendNoPermissionReply(message, REQUEST_LIGHT_STATUS);
+        }
+    }
+
+    private void handleSetResponse(Message.AddressedMessage message) {
+        final Message.AddressedMessage correspondingMessage =
+                takeProxiedReceivedMessage(message.getHeader(HEADER_REFERENCES_ID));
+        final LightPayload lightPayload = SLAVE_LIGHT_SET_REPLY.getPayload(message);
+        final Message messageToSend = new Message(lightPayload);
+        if (correspondingMessage != null) {
+            sendReply(correspondingMessage, messageToSend);
+        }
+        sendMessageToAllDevicesWithPermission(messageToSend, REQUEST_LIGHT_STATUS, null, APP_LIGHT_UPDATE);
+    }
+
+    private void handleGetResponse(Message.AddressedMessage message) {
+        final Message.AddressedMessage correspondingMessage = takeProxiedReceivedMessage(
+                message.getHeader(Message.HEADER_REFERENCES_ID));
+
+        final Message messageToSend = new Message(SLAVE_LIGHT_GET_REPLY.getPayload(message));
+        sendReply(correspondingMessage, messageToSend);
+    }
+
+    private void handleDoorUnlatched(Message.AddressedMessage message) {
+        final MasterUserLocationHandler masterUserLocationHandler = requireComponent(MasterUserLocationHandler.KEY);
+        boolean switchedPosition = masterUserLocationHandler.switchedPositionToLocal(message.getFromID(), 2);
+        boolean isExtern = !masterUserLocationHandler.isDeviceLocal(message.getFromID());
+
+        if (hasPermission(message.getFromID(), UNLATCH_DOOR)) {
+            if (switchedPosition && !isExtern) {
+                final SlaveController slaveController = requireComponent(SlaveController.KEY);
+                boolean tooDark = false;
+                final List<Module> modulesByType = slaveController
+                        .getModulesByType(CoreConstants.ModuleType.WeatherBoard);
+
+                final MasterClimateHandler masterClimateHandler = requireComponent(MasterClimateHandler.KEY);
+                final Map<Module, ClimatePayload> latestWeatherData = masterClimateHandler.getLatestWeatherData();
+                for (Module module : modulesByType) {
+                    if (latestWeatherData.get(module).getVisible() < BRIGHTNESS_LOWER_THRESHOLD) {
+                        tooDark = true;
+                        break;
+                    }
+                }
+
+                if (tooDark) {
+                    //Switch all lights on as user comes home and it is too dark
+                    for (Module module : slaveController.getModulesByType(CoreConstants.ModuleType.Light)) {
+                        try {
+                            final HolidayController holidayController = requireComponent(HolidayController.KEY);
+                            holidayController.addHolidayLogEntryNow(LIGHT_ON_ACTION, module.getName());
+                        } catch (UnknownReferenceException e) {
+                            logger.info("Can't created holiday log entry because the given module doesn't exist "
+                                    + "in the database.");
+                        }
+
+                        LightPayload payload = new LightPayload(true, module);
+                        final Message messageToSend = new Message(payload);
+                        sendMessage(module.getAtSlave(), SLAVE_LIGHT_SET, messageToSend);
+                    }
+                }
+            }
+        }
+    }
+}

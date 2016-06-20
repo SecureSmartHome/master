@@ -1,0 +1,4 @@
+rootProject.name = 'master'
+include ':master', ':core'
+project(':core').projectDir = new File('libs/core')
+

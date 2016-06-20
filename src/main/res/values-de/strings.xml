@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ MIT License
+  ~
+  ~ Copyright (c) 2016.
+  ~ Bucher Andreas, Fink Simon Dominik, Fraedrich Christoph, Popp Wolfgang,
+  ~ Sell Leon, Werli Philemon
+  ~
+  ~ Permission is hereby granted, free of charge, to any person obtaining a copy
+  ~ of this software and associated documentation files (the "Software"), to deal
+  ~ in the Software without restriction, including without limitation the rights
+  ~ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  ~ copies of the Software, and to permit persons to whom the Software is
+  ~ furnished to do so, subject to the following conditions:
+  ~
+  ~ The above copyright notice and this permission notice shall be included in all
+  ~ copies or substantial portions of the Software.
+  ~
+  ~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  ~ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  ~ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  ~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  ~ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  ~ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  ~ SOFTWARE.
+  -->
+
+<!--@author Andreas Bucher-->
+<resources>
+    <string name="app_name">Secure Smart Home - Master</string>
+    <string name="action_settings">Einstellungen</string>
+    <string name="address_format">Adresse: %s</string>
+    <string name="closed_connection_with">Verbindung beendet mit: %s</string>
+    <string name="connected_slaves">Verbundene Slaves</string>
+    <string name="connected_user_devices">Verbundene Nutzergeräte</string>
+    <string name="id_format">ID: %s</string>
+    <string name="invalid_city">Ungültiger Stadtname</string>
+    <string name="invalid_port">Ungültiger Port. Bitte geben Sie nur Ports zwischen 1024 bis 65535</string>
+    <string name="master_city_name_summary">Name der Stadt für die Wettervorhersage</string>
+    <string name="master_port_extern_summary">Wurde geöffnet um sich mit dem Master von außerhalb zu verbinden</string>
+    <string name="master_port_intern_summary">Wurde auf dem Master geöffnet um Verbindungen von außerhalb zu erlauben</string>
+    <string name="master_port_local_summary">Lokaler Port um sich mit dem Master zu verbinden</string>
+    <string name="please_scan_device">Scannen sie den QR-Code mit ihrem Android Gerät es als ersten Administrator zu registrieren.</string>
+    <string name="preferences">Einstellungen</string>
+    <string name="qr_code_description">Dies ist ein QR-Code</string>
+    <string name="slave_name">Slave: %s</string>
+    <string name="title_activity_main">MainActivity</string>
+    <string name="title_activity_preferences">Einstellungen</string>
+    <string name="title_activity_register_local_app">Lokale App registrieren</string>
+    <string name="title_activity_register_local_slave">Lokalen Slave registrieren</string>
+    <string name="userdevice_name">Nutzer Gerät: %s</string>
+    <string name="title_qrcode_activity">Master - füge initiales Gerät hinzu</string>
+    <string name="active_connections">Aktive Verbindungen</string>
+    <string name="ignore">Ignorieren</string>
+    <string name="please_configure_the_ssh">Bitte konfigurieren Sie das Secur Smart Home bevor Sie das erste Admin Gerät hinzufügen</string>
+    <string name="proceed">Fortfahren</string>
+    <string name="register">Registrieren</string>
+    <string name="register_local_app">Registrieren der lokal installierten Secure Smart Home App mit diesem Master?</string>
+    <string name="register_local_slave">Registrieren der lokale installierten Secure Smart Home Slave mit diesem Master?</string>
+    <string name="server_not_started">Server noch nicht gestartet, bitte warte bis der Server gestartet ist</string>
+    <string name="please_set_prefs">Bitte setzen Sie alle Einstellungen bevor Sie fortfahren</string>
+    <string name="name_in_use">Name wird schon benutzt</string>
+    <string name="local_slave">Lokaler Slave</string>
+    <string name="local_app">Lokale App</string>
+    <string name="label_device_name">Name des Gerätes</string>
+</resources>
