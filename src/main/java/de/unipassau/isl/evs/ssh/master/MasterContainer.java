@@ -26,6 +26,7 @@
 
 package de.unipassau.isl.evs.ssh.master;
 
+import de.unipassau.isl.evs.ssh.core.CoreConfiguration;
 import de.unipassau.isl.evs.ssh.core.CoreConstants;
 import de.unipassau.isl.evs.ssh.core.container.AccessLogger;
 import de.unipassau.isl.evs.ssh.core.container.ContainerService;
@@ -73,7 +74,9 @@ public class MasterContainer extends ContainerService {
 
     @Override
     protected void init() {
-        register(MasterConfiguration.KEY, new MasterConfiguration());
+        MasterConfiguration config = new MasterConfiguration();
+        register(CoreConfiguration.KEY, config);
+        register(MasterConfiguration.KEY, config);
         register(DatabaseConnector.KEY, new DatabaseConnector());
         register(KeyStoreController.KEY, new KeyStoreController());
         register(NamingManager.KEY, new NamingManager(true));

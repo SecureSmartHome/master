@@ -11,7 +11,6 @@ repositories {
 dependencies {
     compile project(':core')
     compile group: 'commons-daemon', name: 'commons-daemon', version: '1.0.15'
-    compile group: 'commons-configuration', name: 'commons-configuration', version: '1.10'
     compile group: 'org.jooq', name: 'jooq', version: '3.8.2'
     compile group: 'org.jooq', name: 'jooq-meta', version: '3.8.2'
     compile group: 'org.jooq', name: 'jooq-codegen', version: '3.8.2'
