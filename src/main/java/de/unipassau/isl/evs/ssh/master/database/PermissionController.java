@@ -28,9 +28,7 @@ package de.unipassau.isl.evs.ssh.master.database;
 
 import com.google.common.base.Strings;
 import de.ncoder.typedmap.Key;
-import de.unipassau.isl.evs.ssh.core.container.AbstractComponent;
 import de.unipassau.isl.evs.ssh.core.container.AccessLogger;
-import de.unipassau.isl.evs.ssh.core.container.Container;
 import de.unipassau.isl.evs.ssh.core.database.AlreadyInUseException;
 import de.unipassau.isl.evs.ssh.core.database.DatabaseControllerException;
 import de.unipassau.isl.evs.ssh.core.database.IsReferencedException;
@@ -45,7 +43,6 @@ import de.unipassau.isl.evs.ssh.master.database.generated.tables.HasPermission;
 import de.unipassau.isl.evs.ssh.master.database.generated.tables.Permission;
 import de.unipassau.isl.evs.ssh.master.database.generated.tables.Permissiontemplate;
 import de.unipassau.isl.evs.ssh.master.database.generated.tables.Userdevice;
-import org.jooq.DSLContext;
 import org.jooq.Record1;
 import org.jooq.exception.DataAccessException;
 
@@ -241,38 +238,6 @@ public class PermissionController extends AbstractController {
         }
     }
 
-    private Integer getUserID(DeviceID id) {
-        Record1<Integer> result = create.select(USERDEVICE._ID)
-                .from(USERDEVICE)
-                .where(USERDEVICE.FINGERPRINT.equal(id.getIDString()))
-                .fetchOne();
-
-        if (result != null) {
-            return result.value1();
-        }
-
-        return null;
-
-    }
-
-    private Integer getPermissionID(String permission, String moduleName) {
-        Electronicmodule m = ELECTRONICMODULE.as("m");
-        Permission p = PERMISSION.as("p");
-
-        Record1<Integer> result = create.select(p._ID)
-                .from(p)
-                .leftJoin(m).on(p.ELECTRONICMODULEID.equal(m._ID))
-                .where(p.NAME.equal(permission)
-                        .and(m.NAME.isNull().or(m.NAME.equal(moduleName))))
-                .fetchOne();
-
-        if (result != null) {
-            return result.value1();
-        }
-
-        return null;
-    }
-
     /**
      * Remove a Permission for a UserDevice.
      *
@@ -461,4 +426,37 @@ public class PermissionController extends AbstractController {
                 .where(u.FINGERPRINT.eq(userDeviceID.getIDString()))
                 .fetchInto(PermissionDTO.class);
     }
+
+    private Integer getUserID(DeviceID id) {
+        Record1<Integer> result = create.select(USERDEVICE._ID)
+                .from(USERDEVICE)
+                .where(USERDEVICE.FINGERPRINT.equal(id.getIDString()))
+                .fetchOne();
+
+        if (result != null) {
+            return result.value1();
+        }
+
+        return null;
+
+    }
+
+    private Integer getPermissionID(String permission, String moduleName) {
+        Electronicmodule m = ELECTRONICMODULE.as("m");
+        Permission p = PERMISSION.as("p");
+
+        Record1<Integer> result = create.select(p._ID)
+                .from(p)
+                .leftJoin(m).on(p.ELECTRONICMODULEID.equal(m._ID))
+                .where(p.NAME.equal(permission)
+                        .and(m.NAME.isNull().or(m.NAME.equal(moduleName))))
+                .fetchOne();
+
+        if (result != null) {
+            return result.value1();
+        }
+
+        return null;
+    }
+
 }
