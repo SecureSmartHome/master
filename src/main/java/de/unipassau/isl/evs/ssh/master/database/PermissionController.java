@@ -65,21 +65,8 @@ import static de.unipassau.isl.evs.ssh.master.database.generated.tables.Userdevi
  *
  * @author Leon Sell
  */
-public class PermissionController extends AbstractComponent {
+public class PermissionController extends AbstractController {
     public static final Key<PermissionController> KEY = new Key<>(PermissionController.class);
-    private DSLContext create;
-
-    @Override
-    public void init(Container container) {
-        super.init(container);
-        create = requireComponent(DatabaseConnector.KEY).create;
-    }
-
-    @Override
-    public void destroy() {
-        create = null;
-        super.destroy();
-    }
 
     /**
      * Lists all Permissions of a given template.
@@ -245,7 +232,8 @@ public class PermissionController extends AbstractComponent {
             }
 
             create.insertInto(HAS_PERMISSION, HAS_PERMISSION.PERMISSIONID, HAS_PERMISSION.USERID)
-                    .values(permissionID, userID).execute();
+                    .values(permissionID, userID)
+                    .execute();
 
         } catch (DataAccessException e) {
             throw new UnknownReferenceException(
@@ -256,7 +244,8 @@ public class PermissionController extends AbstractComponent {
     private Integer getUserID(DeviceID id) {
         Record1<Integer> result = create.select(USERDEVICE._ID)
                 .from(USERDEVICE)
-                .where(USERDEVICE.FINGERPRINT.equal(id.getIDString())).fetchOne();
+                .where(USERDEVICE.FINGERPRINT.equal(id.getIDString()))
+                .fetchOne();
 
         if (result != null) {
             return result.value1();
@@ -337,10 +326,7 @@ public class PermissionController extends AbstractComponent {
             Integer moduleID = null;
 
             if (Strings.isNullOrEmpty(moduleName)) {
-                moduleID = create.select(ELECTRONICMODULE._ID)
-                        .from(ELECTRONICMODULE)
-                        .where(ELECTRONICMODULE.NAME.equal(moduleName))
-                        .fetchOne().value1();
+                moduleID = queryModuleID(moduleName);
             }
 
             create.insertInto(PERMISSION, PERMISSION.NAME, PERMISSION.ELECTRONICMODULEID)

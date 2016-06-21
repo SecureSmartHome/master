@@ -27,49 +27,41 @@
 package de.unipassau.isl.evs.ssh.master.database;
 
 import android.database.Cursor;
-import android.database.sqlite.SQLiteConstraintException;
 import android.support.annotation.NonNull;
-
-import com.google.common.collect.ObjectArrays;
+import de.ncoder.typedmap.Key;
+import de.unipassau.isl.evs.ssh.core.CoreConstants;
+import de.unipassau.isl.evs.ssh.core.database.AlreadyInUseException;
+import de.unipassau.isl.evs.ssh.core.database.DatabaseControllerException;
+import de.unipassau.isl.evs.ssh.core.database.IsReferencedException;
+import de.unipassau.isl.evs.ssh.core.database.dto.Module;
+import de.unipassau.isl.evs.ssh.core.database.dto.ModuleAccessPoint.GPIOAccessPoint;
+import de.unipassau.isl.evs.ssh.core.database.dto.ModuleAccessPoint.ModuleAccessPoint;
+import de.unipassau.isl.evs.ssh.core.database.dto.ModuleAccessPoint.USBAccessPoint;
+import de.unipassau.isl.evs.ssh.core.database.dto.ModuleAccessPoint.WLANAccessPoint;
+import de.unipassau.isl.evs.ssh.core.database.dto.Slave;
+import de.unipassau.isl.evs.ssh.core.naming.DeviceID;
+import de.unipassau.isl.evs.ssh.master.database.generated.tables.Electronicmodule;
+import org.jooq.Record1;
+import org.jooq.Record2;
+import org.jooq.Result;
+import org.jooq.exception.DataAccessException;
 
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import de.ncoder.typedmap.Key;
-import de.unipassau.isl.evs.ssh.core.CoreConstants;
-import de.unipassau.isl.evs.ssh.core.container.AbstractComponent;
-import de.unipassau.isl.evs.ssh.core.container.Container;
-import de.unipassau.isl.evs.ssh.core.database.AlreadyInUseException;
-import de.unipassau.isl.evs.ssh.core.database.DatabaseControllerException;
-import de.unipassau.isl.evs.ssh.core.database.IsReferencedException;
-import de.unipassau.isl.evs.ssh.core.database.dto.Module;
-import de.unipassau.isl.evs.ssh.core.database.dto.ModuleAccessPoint.ModuleAccessPoint;
-import de.unipassau.isl.evs.ssh.core.database.dto.Slave;
-import de.unipassau.isl.evs.ssh.core.naming.DeviceID;
+import static de.unipassau.isl.evs.ssh.master.database.generated.tables.Electronicmodule.ELECTRONICMODULE;
+import static de.unipassau.isl.evs.ssh.master.database.generated.tables.Slave.SLAVE;
 
 /**
  * Offers high level methods to interact with the tables associated with slaves and modules in the database.
  *
  * @author Leon Sell
  */
-public class SlaveController extends AbstractComponent {
+public class SlaveController extends AbstractController {
     public static final Key<SlaveController> KEY = new Key<>(SlaveController.class);
-    private DatabaseConnector databaseConnector;
     private final Map<DeviceID, byte[]> passiveRegistrationTokens = new HashMap<>();
-
-    @Override
-    public void init(Container container) {
-        super.init(container);
-        databaseConnector = requireComponent(DatabaseConnector.KEY);
-    }
-
-    @Override
-    public void destroy() {
-        databaseConnector = null;
-        super.destroy();
-    }
 
     /**
      * Create a String array suitable to be inserted into the database. This function will fill in null values for all
@@ -100,28 +92,128 @@ public class SlaveController extends AbstractComponent {
      */
     public void addModule(Module module) throws DatabaseControllerException {
         try {
-            //Notice: Changed order of values to avoid having to concat twice!
-            databaseConnector.executeSql("insert into "
-                            + DatabaseContract.ElectronicModule.TABLE_NAME + " ("
-                            + DatabaseContract.ElectronicModule.COLUMN_GPIO_PIN + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_USB_PORT + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_WLAN_PORT + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_WLAN_USERNAME + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_WLAN_PASSWORD + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_WLAN_IP + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_MODULE_TYPE + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_CONNECTOR_TYPE + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_SLAVE_ID + ", "
-                            + DatabaseContract.ElectronicModule.COLUMN_NAME + ") values "
-                            + "(?, ?, ?, ?, ?, ?, ?, ?, (" + DatabaseContract.SqlQueries.SLAVE_ID_FROM_FINGERPRINT_SQL_QUERY + "), ?)",
-                    ObjectArrays.concat(
-                            createCombinedModulesAccessInformationFromSingle(module.getModuleAccessPoint()),
-                            new String[]{module.getModuleType().toString(), module.getModuleAccessPoint().getType(),
-                                    module.getAtSlave().getIDString(), module.getName()}, String.class));
-        } catch (SQLiteConstraintException sqlce) {
+            Electronicmodule m = ELECTRONICMODULE.as("m");
+            DBModule dbModule = new DBModule().initFromModule(module);
+            create.insertInto(m,
+                    m.SLAVEID,
+                    m.NAME,
+                    m.GPIOPIN,
+                    m.USBPORT,
+                    m.WLANIP,
+                    m.WLANPORT,
+                    m.WLANUSERNAME,
+                    m.WLANPASSWORD,
+                    m.MODULETYPE,
+                    m.TYPE)
+                    .values(dbModule.getSlaveID(),
+                            dbModule.getName(),
+                            dbModule.getGpioPort(),
+                            dbModule.getUsbPort(),
+                            dbModule.getWlanIP(),
+                            dbModule.getWlanPort(),
+                            dbModule.getWlanUsername(),
+                            dbModule.getWlanPassword(),
+                            dbModule.getModuleType(),
+                            dbModule.getType())
+                    .execute();
+
+        } catch (DataAccessException e) {
             throw new DatabaseControllerException("The given Slave does not exist in the database"
-                    + " or the name is already used by another Module", sqlce);
+                    + " or the name is already used by another Module", e);
         }
+    }
+
+    private Integer getSlaveID(DeviceID deviceID) {
+        Record1<Integer> slaveRecord = create.select(SLAVE._ID)
+                .from(SLAVE)
+                .where(SLAVE.FINGERPRINT.equal(deviceID.getIDString()))
+                .fetchOne();
+
+        if (slaveRecord != null) {
+            return slaveRecord.value1();
+        }
+
+        return null;
+    }
+
+    private class DBModule {
+        private Integer slaveID = null;
+        private String name = null;
+        private Integer gpioPort = null;
+        private Integer usbPort = null;
+        private Integer wlanPort = null;
+        private String wlanUsername = null;
+        private String wlanPassword = null;
+        private String wlanIP = null;
+        private String moduleType = null;
+        private String type = null;
+
+        private DBModule() {
+        }
+
+        private DBModule initFromModule(Module module) {
+            ModuleAccessPoint accessPoint = module.getModuleAccessPoint();
+
+            this.slaveID = SlaveController.this.getSlaveID(module.getAtSlave());
+            this.name = module.getName();
+            this.moduleType = module.getModuleType().toString();
+            this.type = accessPoint.getType();
+
+            if (accessPoint instanceof GPIOAccessPoint){
+                this.gpioPort = ((GPIOAccessPoint) accessPoint).getPort();
+            } else if (accessPoint instanceof USBAccessPoint) {
+                this.usbPort = ((USBAccessPoint) accessPoint).getPort();
+            } else if (accessPoint instanceof WLANAccessPoint) {
+                WLANAccessPoint wlanAccessPoint = ((WLANAccessPoint) accessPoint);
+                this.wlanIP = wlanAccessPoint.getiPAddress();
+                this.wlanPort = wlanAccessPoint.getPort();
+                this.wlanUsername = wlanAccessPoint.getUsername();
+                this.wlanPassword = wlanAccessPoint.getPassword();
+            }
+                
+            return this;
+        }
+
+        public int getSlaveID() {
+            return slaveID;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public int getGpioPort() {
+            return gpioPort;
+        }
+
+        public int getUsbPort() {
+            return usbPort;
+        }
+
+        public int getWlanPort() {
+            return wlanPort;
+        }
+
+        public String getWlanUsername() {
+            return wlanUsername;
+        }
+
+        public String getWlanPassword() {
+            return wlanPassword;
+        }
+
+        public String getWlanIP() {
+            return wlanIP;
+        }
+
+        public String getModuleType() {
+            return moduleType;
+        }
+
+        public String getType() {
+            return type;
+        }
+
     }
 
     /**
@@ -130,10 +222,9 @@ public class SlaveController extends AbstractComponent {
      * @param moduleName Name of the Module to remove.
      */
     public void removeModule(String moduleName) {
-        databaseConnector.executeSql("delete from "
-                        + DatabaseContract.ElectronicModule.TABLE_NAME
-                        + " where " + DatabaseContract.ElectronicModule.COLUMN_NAME + " = ?",
-                new String[]{moduleName});
+        create.deleteFrom(ELECTRONICMODULE)
+                .where(ELECTRONICMODULE.NAME.equal(moduleName))
+                .execute();
     }
 
     /**
@@ -274,6 +365,9 @@ public class SlaveController extends AbstractComponent {
      * @param newName New Module name.
      */
     public void changeModuleName(String oldName, String newName) throws AlreadyInUseException {
+        //TODO port to jooq
+        throw new UnsupportedOperationException("Not implemented, yet!");
+        /*
         try {
             databaseConnector.executeSql("update " + DatabaseContract.ElectronicModule.TABLE_NAME
                             + " set " + DatabaseContract.ElectronicModule.COLUMN_NAME
@@ -282,19 +376,20 @@ public class SlaveController extends AbstractComponent {
         } catch (SQLiteConstraintException sqlce) {
             throw new AlreadyInUseException("The given name is already used by another Module.", sqlce);
         }
+        */
     }
 
     /**
      * Get a list of all Slaves.
      */
     public List<Slave> getSlaves() {
-        Cursor slavesCursor = databaseConnector.executeSql("select "
-                + DatabaseContract.Slave.COLUMN_NAME
-                + ", " + DatabaseContract.Slave.COLUMN_FINGERPRINT
-                + " from " + DatabaseContract.Slave.TABLE_NAME, new String[]{});
+        Result<Record2<String, String>> result = create.select(SLAVE.NAME, SLAVE.FINGERPRINT)
+                .from(SLAVE)
+                .fetch();
         List<Slave> slaves = new LinkedList<>();
-        while (slavesCursor.moveToNext()) {
-            slaves.add(cursorToSlave(slavesCursor));
+        for (Record2<String, String> slave : result) {
+            DeviceID slaveID = new DeviceID(slave.value2());
+            slaves.add(new Slave(slave.value1(), slaveID, passiveRegistrationTokens.get(slaveID)));
         }
         return slaves;
     }
@@ -306,6 +401,9 @@ public class SlaveController extends AbstractComponent {
      * @param newName New Slave name.
      */
     public void changeSlaveName(String oldName, String newName) throws AlreadyInUseException {
+        //TODO port to jooq
+        throw new UnsupportedOperationException("Not implemented, yet!");
+        /*
         try {
             databaseConnector.executeSql("update " + DatabaseContract.Slave.TABLE_NAME
                             + " set " + DatabaseContract.Slave.COLUMN_NAME
@@ -314,6 +412,7 @@ public class SlaveController extends AbstractComponent {
         } catch (SQLiteConstraintException sqlce) {
             throw new AlreadyInUseException("The given name is already used by another Slave.", sqlce);
         }
+        */
     }
 
     /**
@@ -323,14 +422,12 @@ public class SlaveController extends AbstractComponent {
      */
     public void addSlave(Slave slave) throws AlreadyInUseException {
         try {
-            databaseConnector.executeSql("insert into "
-                            + DatabaseContract.Slave.TABLE_NAME
-                            + " (" + DatabaseContract.Slave.COLUMN_NAME
-                            + ", " + DatabaseContract.Slave.COLUMN_FINGERPRINT + ") values (?, ?)",
-                    new String[]{slave.getName(), slave.getSlaveID().getIDString()});
+            create.insertInto(SLAVE, SLAVE.NAME, SLAVE.FINGERPRINT)
+                    .values(slave.getName(), slave.getSlaveID().getIDString())
+                    .execute();
             passiveRegistrationTokens.put(slave.getSlaveID(), slave.getPassiveRegistrationToken());
-        } catch (SQLiteConstraintException sqlce) {
-            throw new AlreadyInUseException("The given name or fingerprint is already used by another Slave.", sqlce);
+        } catch (DataAccessException e) {
+            throw new AlreadyInUseException("The given name or fingerprint is already used by another Slave.", e);
         }
     }
 
@@ -341,62 +438,46 @@ public class SlaveController extends AbstractComponent {
      */
     public void removeSlave(DeviceID slaveID) throws IsReferencedException {
         try {
-            databaseConnector.executeSql("delete from "
-                            + DatabaseContract.Slave.TABLE_NAME
-                            + " where " + DatabaseContract.Slave.COLUMN_FINGERPRINT + " = ?",
-                    new String[]{slaveID.getIDString()});
-        } catch (SQLiteConstraintException sqlce) {
-            throw new IsReferencedException("This slave is in use. At least one module depends on it.", sqlce);
+            create.deleteFrom(SLAVE)
+                    .where(SLAVE.FINGERPRINT.eq(slaveID.getIDString()))
+                    .execute();
+        } catch (DataAccessException e) {
+            throw new IsReferencedException("This slave is in use. At least one module depends on it.", e);
         }
     }
 
     /**
      * Get internal database id for a given Module.
+     *
      * @param moduleName Name of the Module.
-     * @return The database id of the given Module.
+     * @return The database id of the given Module or null if the module does not exist
      */
     public Integer getModuleID(String moduleName) {
-        Cursor moduleCursor = databaseConnector.executeSql("select "
-                + DatabaseContract.ElectronicModule.COLUMN_ID
-                + " from " + DatabaseContract.ElectronicModule.TABLE_NAME
-                + " where " + DatabaseContract.ElectronicModule.COLUMN_NAME
-                + " = ?", new String[]{moduleName});
-        if (moduleCursor.moveToNext()) {
-            return moduleCursor.getInt(0);
-        }
-        return null;
+        return queryModuleID(moduleName);
     }
 
     /**
      * Get a Slave by its DeviceID.
+     *
      * @param slaveID DeviceID of the Slave.
      * @return The Slave associated with the DeviceID.
      */
     public Slave getSlave(DeviceID slaveID) {
-        Cursor slavesCursor = databaseConnector.executeSql("select "
-                + DatabaseContract.Slave.COLUMN_NAME
-                + ", " + DatabaseContract.Slave.COLUMN_FINGERPRINT
-                + " from " + DatabaseContract.Slave.TABLE_NAME
-                + " where " + DatabaseContract.Slave.COLUMN_FINGERPRINT
-                + " = ?", new String[]{slaveID.getIDString()});
-        if (slavesCursor.moveToNext()) {
-            return cursorToSlave(slavesCursor);
+        de.unipassau.isl.evs.ssh.master.database.generated.tables.Slave s = SLAVE.as("s");
+        Record1<String> slaveRecord = create.select(s.NAME)
+                .from(s)
+                .where(s.FINGERPRINT.equal(slaveID.getIDString()))
+                .fetchOne();
+
+        if (slaveRecord != null) {
+            return new Slave(slaveRecord.value1(), slaveID, passiveRegistrationTokens.get(slaveID));
         }
         return null;
     }
 
-    @NonNull
-    private Slave cursorToSlave(Cursor slavesCursor) {
-        final DeviceID slaveID = new DeviceID(slavesCursor.getString(1));
-        return new Slave(
-                slavesCursor.getString(0),
-                slaveID,
-                passiveRegistrationTokens.get(slaveID)
-        );
-    }
-
     /**
      * Get all Modules of a given type.
+     *
      * @param type Type of the Modules to get.
      * @return List of all Modules with given type.
      */

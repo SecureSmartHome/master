@@ -46,21 +46,8 @@ import static de.unipassau.isl.evs.ssh.master.database.generated.tables.Holidayl
  *
  * @author Leon Sell
  */
-public class HolidayController extends AbstractComponent {
+public class HolidayController extends AbstractController {
     public static final Key<HolidayController> KEY = new Key<>(HolidayController.class);
-    private DSLContext create;
-
-    @Override
-    public void init(Container container) {
-        super.init(container);
-        create = requireComponent(DatabaseConnector.KEY).create;
-    }
-
-    @Override
-    public void destroy() {
-        create = null;
-        super.destroy();
-    }
 
     /**
      * Add a new action to the database.
