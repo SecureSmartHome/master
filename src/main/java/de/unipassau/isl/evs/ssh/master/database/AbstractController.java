@@ -25,7 +25,7 @@ abstract class AbstractController extends AbstractComponent {
         super.destroy();
     }
 
-    protected Integer queryModuleID(String moduleName) {
+    Integer queryModuleID(String moduleName) {
         Record1<Integer> moduleRecord = create.select(ELECTRONICMODULE._ID)
                 .from(ELECTRONICMODULE)
                 .where(ELECTRONICMODULE.NAME.equal(moduleName))

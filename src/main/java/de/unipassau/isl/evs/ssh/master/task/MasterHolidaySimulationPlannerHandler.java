@@ -26,17 +26,9 @@
 
 package de.unipassau.isl.evs.ssh.master.task;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.content.Intent;
-import android.os.SystemClock;
-import android.util.Log;
-
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 import de.ncoder.typedmap.Key;
 import de.unipassau.isl.evs.ssh.core.CoreConstants;
+import de.unipassau.isl.evs.ssh.core.container.Component;
 import de.unipassau.isl.evs.ssh.core.container.Container;
 import de.unipassau.isl.evs.ssh.core.database.dto.HolidayAction;
 import de.unipassau.isl.evs.ssh.core.database.dto.Module;
@@ -45,13 +37,18 @@ import de.unipassau.isl.evs.ssh.core.messaging.RoutingKey;
 import de.unipassau.isl.evs.ssh.core.messaging.payload.HolidaySimulationPayload;
 import de.unipassau.isl.evs.ssh.core.messaging.payload.LightPayload;
 import de.unipassau.isl.evs.ssh.core.messaging.payload.MessagePayload;
-import de.unipassau.isl.evs.ssh.core.schedule.ExecutionServiceComponent;
-import de.unipassau.isl.evs.ssh.core.schedule.ScheduledComponent;
 import de.unipassau.isl.evs.ssh.core.schedule.Scheduler;
 import de.unipassau.isl.evs.ssh.master.database.HolidayController;
 import de.unipassau.isl.evs.ssh.master.database.SlaveController;
 import de.unipassau.isl.evs.ssh.master.handler.AbstractMasterHandler;
 import de.unipassau.isl.evs.ssh.master.network.broadcast.NotificationBroadcaster;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import static de.unipassau.isl.evs.ssh.core.messaging.RoutingKeys.MASTER_HOLIDAY_GET;
 import static de.unipassau.isl.evs.ssh.core.messaging.RoutingKeys.MASTER_HOLIDAY_SET;
@@ -67,11 +64,11 @@ import static de.unipassau.isl.evs.ssh.core.sec.Permission.TOGGLE_HOLIDAY_SIMULA
  *
  * @author Christoph Fraedrich
  */
-public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler implements ScheduledComponent {
+public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler implements Component {
     private static final long SCHEDULE_LOOKAHEAD_MILLIS = TimeUnit.HOURS.toMillis(1);
     public static final Key<MasterHolidaySimulationPlannerHandler> KEY = new Key<>(MasterHolidaySimulationPlannerHandler.class);
-    private static final String TAG = MasterHolidaySimulationPlannerHandler.class.getSimpleName();
-
+    private final Logger logger = LoggerFactory.getLogger(getClass());
+    private final LinkedList<ScheduledFuture<?>> actions = new LinkedList<>();
     private boolean runHolidaySimulation = false;
 
     @Override
@@ -98,15 +95,10 @@ public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler
             final NotificationBroadcaster notificationBroadcaster = requireComponent(NotificationBroadcaster.KEY);
             if (runHolidaySimulation) {
                 notificationBroadcaster.sendMessageToAllReceivers(HOLIDAY_MODE_SWITCHED_ON);
-                Scheduler scheduler = requireComponent(Scheduler.KEY);
-                PendingIntent intent = scheduler.getPendingScheduleIntent(MasterHolidaySimulationPlannerHandler.KEY, null, PendingIntent.FLAG_CANCEL_CURRENT);
-                scheduler.setRepeating(AlarmManager.RTC_WAKEUP, SystemClock.elapsedRealtime() + 1000, SCHEDULE_LOOKAHEAD_MILLIS, intent);
+                scheduleActions();
             } else {
-                Scheduler scheduler = requireComponent(Scheduler.KEY);
-                PendingIntent intent = scheduler.getPendingScheduleIntent(MasterHolidaySimulationPlannerHandler.KEY, null, PendingIntent.FLAG_CANCEL_CURRENT);
-                scheduler.cancel(intent);
                 notificationBroadcaster.sendMessageToAllReceivers(HOLIDAY_MODE_SWITCHED_OFF);
-                //TODO Leon: kill all planned tasks (Leon, 14.01.16)
+                cancelActions();
             }
         } else {
             sendNoPermissionReply(message, TOGGLE_HOLIDAY_SIMULATION);
@@ -119,9 +111,8 @@ public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler
         sendReply(message, reply);
     }
 
-    @Override
-    public void onReceive(Intent intent) {
-        Log.i(TAG, "HolidayPlanner calculating...");
+    private void scheduleActions() {
+        logger.info("HolidayPlanner calculating...");
         //Cannot do anything without the container
         if (runHolidaySimulation && getContainer() != null) {
             final long planningStartTime = System.currentTimeMillis();
@@ -131,12 +122,20 @@ public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler
                     planningStartTime - TimeUnit.DAYS.toMillis(7) + SCHEDULE_LOOKAHEAD_MILLIS
             );
 
+            Scheduler scheduler = requireComponent(Scheduler.KEY);
             for (HolidayAction a : lastWeek) {
-                requireComponent(ExecutionServiceComponent.KEY).schedule(new HolidayLightAction(a.getModuleName(),
-                        a.getActionName()), (a.getTimeStamp() + TimeUnit.DAYS.toMillis(7) - planningStartTime) / 1000,
-                        TimeUnit.SECONDS);
+                Runnable action = new HolidayLightAction(a.getModuleName(), a.getActionName());
+                long delay = (a.getTimeStamp() + TimeUnit.DAYS.toMillis(7) - planningStartTime) / 1000;
+                actions.add(scheduler.schedule(action, delay, TimeUnit.SECONDS));
             }
         }
+    }
+
+    private void cancelActions() {
+        for (ScheduledFuture<?> action : actions) {
+            action.cancel(false);
+        }
+        actions.clear();
     }
 
     @Override
@@ -146,12 +145,7 @@ public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler
 
     @Override
     public void destroy() {
-        if (getContainer() != null) {
-            //TODO Leon: only cancel, when not already canceled (Leon, 14.01.16)
-            Scheduler scheduler = requireComponent(Scheduler.KEY);
-            PendingIntent intent = scheduler.getPendingScheduleIntent(MasterHolidaySimulationPlannerHandler.KEY, null, PendingIntent.FLAG_CANCEL_CURRENT);
-            scheduler.cancel(intent);
-        }
+        cancelActions();
         super.destroy();
     }
 
@@ -164,7 +158,7 @@ public class MasterHolidaySimulationPlannerHandler extends AbstractMasterHandler
         final String moduleName;
         final String actionName;
 
-        public HolidayLightAction(String moduleName, String actionName) {
+        private HolidayLightAction(String moduleName, String actionName) {
             this.moduleName = moduleName;
             this.actionName = actionName;
         }

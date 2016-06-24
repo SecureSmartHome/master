@@ -26,37 +26,30 @@
 
 package de.unipassau.isl.evs.ssh.master.task;
 
-import android.app.AlarmManager;
-import android.app.PendingIntent;
-import android.content.Intent;
-import android.content.SharedPreferences;
-import android.util.Log;
-
 import com.google.common.base.Strings;
-
-import net.aksingh.owmjapis.CurrentWeather;
-import net.aksingh.owmjapis.OpenWeatherMap;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
 import de.ncoder.typedmap.Key;
 import de.unipassau.isl.evs.ssh.core.CoreConstants;
+import de.unipassau.isl.evs.ssh.core.container.Component;
 import de.unipassau.isl.evs.ssh.core.container.Container;
-import de.unipassau.isl.evs.ssh.core.container.ContainerService;
-import de.unipassau.isl.evs.ssh.core.messaging.IncomingDispatcher;
 import de.unipassau.isl.evs.ssh.core.messaging.Message;
 import de.unipassau.isl.evs.ssh.core.messaging.RoutingKey;
 import de.unipassau.isl.evs.ssh.core.messaging.payload.DoorStatusPayload;
 import de.unipassau.isl.evs.ssh.core.messaging.payload.NotificationPayload;
 import de.unipassau.isl.evs.ssh.core.schedule.ExecutionServiceComponent;
-import de.unipassau.isl.evs.ssh.core.schedule.ScheduledComponent;
 import de.unipassau.isl.evs.ssh.core.schedule.Scheduler;
-import de.unipassau.isl.evs.ssh.master.R;
+import de.unipassau.isl.evs.ssh.master.MasterConfiguration;
 import de.unipassau.isl.evs.ssh.master.handler.AbstractMasterHandler;
 import de.unipassau.isl.evs.ssh.master.network.broadcast.NotificationBroadcaster;
+import net.aksingh.owmjapis.CurrentWeather;
+import net.aksingh.owmjapis.OpenWeatherMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import static de.unipassau.isl.evs.ssh.core.messaging.RoutingKeys.MASTER_DOOR_STATUS_UPDATE;
 
@@ -66,16 +59,16 @@ import static de.unipassau.isl.evs.ssh.core.messaging.RoutingKeys.MASTER_DOOR_ST
  *
  * @author Christoph Fraedrich
  */
-public class MasterWeatherCheckHandler extends AbstractMasterHandler implements ScheduledComponent {
+public class MasterWeatherCheckHandler extends AbstractMasterHandler implements Component {
     public static final Key<MasterWeatherCheckHandler> KEY = new Key<>(MasterWeatherCheckHandler.class);
-    private static final long CHECK_INTERVAL_MILLIS = TimeUnit.MINUTES.toMillis(5);
+    private static final long CHECK_INTERVAL_MINUTES = 5;
     private static final long FAILURE_UPDATE_TIMER = TimeUnit.MINUTES.toMillis(45);
-    private static final String TAG = MasterWeatherCheckHandler.class.getSimpleName();
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private Container container;
     private long timeStamp = -1;
     private final Map<String, Boolean> openForModule = new HashMap<>();
     private final OpenWeatherMap owm = new OpenWeatherMap(CoreConstants.OPENWEATHERMAP_API_KEY);
+    private ScheduledFuture scheduledFuture;
 
     @Override
     public void handle(Message.AddressedMessage message) {
@@ -94,77 +87,70 @@ public class MasterWeatherCheckHandler extends AbstractMasterHandler implements 
 
     @Override
     public void init(Container container) {
-        this.container = container;
-        container.require(IncomingDispatcher.KEY).registerHandler(this, getRoutingKeys());
-        Scheduler scheduler = container.require(Scheduler.KEY);
-        PendingIntent intent = scheduler.getPendingScheduleIntent(MasterWeatherCheckHandler.KEY, null,
-                PendingIntent.FLAG_CANCEL_CURRENT);
-        scheduler.setRepeating(AlarmManager.RTC, System.currentTimeMillis(),
-                CHECK_INTERVAL_MILLIS, intent);
+        final Scheduler scheduler = container.require(Scheduler.KEY);
+        final MasterConfiguration config = requireComponent(MasterConfiguration.KEY);
+        final WeatherCheckRunner task = new WeatherCheckRunner(config.getLocation());
+        scheduledFuture = scheduler.scheduleAtFixedRate(task, 0, CHECK_INTERVAL_MINUTES, TimeUnit.MINUTES);
     }
 
     @Override
     public void destroy() {
-        if (container != null) {
-            Scheduler scheduler = requireComponent(Scheduler.KEY);
-            PendingIntent intent = scheduler.getPendingScheduleIntent(MasterWeatherCheckHandler.KEY, null,
-                    PendingIntent.FLAG_CANCEL_CURRENT);
-            scheduler.cancel(intent);
-
-            requireComponent(IncomingDispatcher.KEY).unregisterHandler(this, getRoutingKeys());
+        if (getContainer() != null) {
+            scheduledFuture.cancel(true);
         }
-        this.container = null;
     }
 
-    @Override
-    public void onReceive(Intent intent) {
-        SharedPreferences sharedPreferences = requireComponent(ContainerService.KEY_CONTEXT).getSharedPreferences();
-        final String city = sharedPreferences.getString(
-                requireComponent(ContainerService.KEY_CONTEXT).getResources().getString(R.string.master_city_name),
-                null
-        );
-        if (Strings.isNullOrEmpty(city)) {
-            return;
+    private class WeatherCheckRunner implements Runnable {
+        private final String city;
+
+        private WeatherCheckRunner(String city) {
+            this.city = city;
         }
 
-        Log.i(TAG, "Inquiring weather data for " + city);
-        //Presentation Mode
-        if (city.equals("Mordor")) {
-            for (Boolean isOpen : openForModule.values()) {
-                if (isOpen) {
-                    sendWarningNotification();
-                    break;
-                }
+        public void run() {
+            if (Strings.isNullOrEmpty(city)) {
+                return;
             }
-            return;
-        }
 
-        requireComponent(ExecutionServiceComponent.KEY).execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    CurrentWeather cw = owm.currentWeatherByCityName(city);
-                    if (cw == null || cw.getRainInstance() == null) {
-                        WeatherServiceFailed(city);
-                        return;
+            logger.info("Inquiring weather data for " + city);
+            //Presentation Mode
+            if (city.equals("Mordor")) {
+                for (Boolean isOpen : openForModule.values()) {
+                    if (isOpen) {
+                        sendWarningNotification();
+                        break;
                     }
+                }
+                return;
+            }
 
-                    if (cw.getRainInstance().hasRain()) {
-                        for (Boolean isOpen : openForModule.values()) {
-                            if (isOpen) {
-                                sendWarningNotification();
-                                break;
+            requireComponent(ExecutionServiceComponent.KEY).execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        CurrentWeather cw = owm.currentWeatherByCityName(city);
+                        if (cw == null || cw.getRainInstance() == null) {
+                            WeatherServiceFailed(city);
+                            return;
+                        }
+
+                        if (cw.getRainInstance().hasRain()) {
+                            for (Boolean isOpen : openForModule.values()) {
+                                if (isOpen) {
+                                    sendWarningNotification();
+                                    break;
+                                }
                             }
                         }
+                    } catch (IOException e) {
+                        logger.error(e.getLocalizedMessage());
+                        WeatherServiceFailed(city);
+                    } catch (Exception e) {
+                        logger.error(e.getLocalizedMessage());
                     }
-                } catch (IOException e) {
-                    Log.e(TAG, e.getLocalizedMessage());
-                    WeatherServiceFailed(city);
-                } catch (Exception e) {
-                    Log.e(TAG, e.getLocalizedMessage());
                 }
-            }
-        });
+            });
+        }
     }
 
     private void WeatherServiceFailed(String city) {

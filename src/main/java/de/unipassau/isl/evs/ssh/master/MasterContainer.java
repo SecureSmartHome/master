@@ -35,6 +35,7 @@ import de.unipassau.isl.evs.ssh.core.messaging.OutgoingRouter;
 import de.unipassau.isl.evs.ssh.core.naming.NamingManager;
 import de.unipassau.isl.evs.ssh.core.schedule.DefaultExecutionServiceComponent;
 import de.unipassau.isl.evs.ssh.core.schedule.ExecutionServiceComponent;
+import de.unipassau.isl.evs.ssh.core.schedule.Scheduler;
 import de.unipassau.isl.evs.ssh.core.sec.KeyStoreController;
 import de.unipassau.isl.evs.ssh.master.database.DatabaseConnector;
 import de.unipassau.isl.evs.ssh.master.database.HolidayController;
@@ -77,6 +78,7 @@ public class MasterContainer extends ContainerService {
         MasterConfiguration config = new MasterConfiguration();
         register(CoreConfiguration.KEY, config);
         register(MasterConfiguration.KEY, config);
+        register(Scheduler.KEY, new Scheduler());
         register(DatabaseConnector.KEY, new DatabaseConnector());
         register(KeyStoreController.KEY, new KeyStoreController());
         register(NamingManager.KEY, new NamingManager(true));
