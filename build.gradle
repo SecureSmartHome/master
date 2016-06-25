@@ -6,6 +6,9 @@ sourceCompatibility = 1.7
 
 repositories {
     mavenCentral()
+    maven {
+        url "https://dl.bintray.com/n-coder/maven/"
+    }
 }
 
 dependencies {
