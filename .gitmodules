@@ -1,3 +1,4 @@
 [submodule "libs/core"]
-	path = libs/core
-	url = git@github.com:SecureSmartHome/core.git
+    branch = master
+    path = libs/core
+    url = git@github.com:SecureSmartHome/core.git
