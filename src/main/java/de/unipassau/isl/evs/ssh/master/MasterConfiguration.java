@@ -40,4 +40,9 @@ public class MasterConfiguration extends CoreConfiguration {
 
         return port;
     }
+
+    @Override
+    protected ConfigurationDefaults loadDefaults() {
+        return new ConfigurationDefaults("/etc/securesmarthome.conf", "/var/lib/securesmarthome/keystore");
+    }
 }
