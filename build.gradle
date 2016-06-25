@@ -11,6 +11,18 @@ repositories {
     }
 }
 
+//create a single Jar with all dependencies
+task fatJar(type: Jar) {
+    manifest {
+        attributes 'Implementation-Title': 'SecureSmartHome Master',
+                'Implementation-Version': version,
+                'Main-Class': 'de.unipassau.isl.evs.ssh.master.Main'
+    }
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
 dependencies {
     compile project(':core')
     compile group: 'commons-daemon', name: 'commons-daemon', version: '1.0.15'
